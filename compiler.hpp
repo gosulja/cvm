@@ -16,7 +16,7 @@ private:
 
     void emitByte(uint16_t byte) {
         bytecode.push_back(byte);
-        std::cout << "Emitted byte: 0x" << std::hex << byte << std::dec << std::endl;
+        //std::cout << "Emitted byte: 0x" << std::hex << byte << std::dec << std::endl;
     }
 
     void emitBytes(uint16_t byte1, uint16_t byte2) {
@@ -47,7 +47,7 @@ private:
         if (next_reg >= 256) {
             throw std::runtime_error("Register overflow.");
         }
-        std::cout << "Allocated register: " << next_reg << std::endl;
+        //std::cout << "Allocated register: " << next_reg << std::endl;
         return next_reg++;
     }
 
@@ -64,7 +64,7 @@ private:
             uint16_t value = std::stoi(token.lexeme);
             result_reg = allocRegister();
             emitBytes(MOV, result_reg, value);
-            std::cout << "Compiled number: " << value << " to register " << result_reg << std::endl;
+            //std::cout << "Compiled number: " << value << " to register " << result_reg << std::endl;
             index++;
             break;
         }
@@ -97,7 +97,7 @@ private:
             uint16_t right_reg = expression(tokens, index);
             uint16_t new_result_reg = allocRegister();
 
-            std::cout << "Compiling operation: " << op << std::endl;
+            //std::cout << "Compiling operation: " << op << std::endl;
 
             if (op == "+") {
                 emitBytes(ADD, result_reg, right_reg, new_result_reg);
@@ -113,9 +113,6 @@ private:
             }
             else if (op == "%") {
                 emitBytes(MOD, result_reg, right_reg, new_result_reg);
-            }
-            else if (op == "^") {
-                emitBytes(POW, result_reg, right_reg, new_result_reg);
             }
             else {
                 throw std::runtime_error("Unsupported operator: " + op);
@@ -133,13 +130,13 @@ public:
         variables.clear();
         next_reg = 1;
 
-        std::cout << "Starting compilation" << std::endl;
+        //std::cout << "Starting compilation" << std::endl;
         size_t index = 0;
         uint16_t finalResultReg = expression(tokens, index);
 
         emitRegisterMove(finalResultReg, 0);
 
-        std::cout << "Compilation finished. Bytecode size: " << bytecode.size() << std::endl;
+        //std::cout << "Compilation finished. Bytecode size: " << bytecode.size() << std::endl;
         return bytecode;
     }
 

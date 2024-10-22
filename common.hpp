@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
@@ -14,7 +15,7 @@
 #define MUL      0x06
 #define DIV      0x07
 #define MOD      0x08 // modulo
-#define POW      0x09 // power
+#define POW      0x09 // pow     NOT IMPLEMENTED
 #define NEG      0x0A // negation
 #define NOT      0x0B // logical NOT
 #define EQ       0x0C // equal
