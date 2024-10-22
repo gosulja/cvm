@@ -1,4 +1,4 @@
-# cvm
+# cvm (cat virtual machine)
 A register based bytecode virtual machine compiler.
 
 # features
