@@ -66,7 +66,3 @@ Usage: ./build/cvm [-d] [filename]
   If no filename is provided, starts in REPL mode
 ```
 
-and enjoy!
-
-# example
-![example](https://imgur.com/MJIDd6p.png)
