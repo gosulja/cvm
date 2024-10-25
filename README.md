@@ -1,5 +1,5 @@
 # cvm (cat virtual machine)
-A register based bytecode virtual machine compiler.
+A stack based bytecode virtual machine compiler inspired by JVM.
 
 # features
 * Mathematical expressions such as `1+2` or `(5*5) - 10 / 2`.
