@@ -26,9 +26,5 @@ make
 ```
 then:
 ```
-./cvm
+./cvm [-d -h -o] [...file.cat]
 ```
-and enjoy!
-
-# example
-![example](https://imgur.com/MJIDd6p.png)
