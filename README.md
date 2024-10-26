@@ -3,14 +3,14 @@ A register based bytecode virtual machine compiler.
 
 # features
 * Mathematical expressions such as `1+2` or `(5*5) - 10 / 2`.
+* Variable declarations such as `string name = "blinx";` or `int age = 20;`.
+* In built functions such as: `print`, `size`.
 
 # potential issues
 floating point numbers may not work as intended because im dumb and used `uint16_t` everywhere. will fix this!
 
 # changes
-### October 24 2024
-* Modified instruction `MOV` to `LDR` to make it more clear that we're loading a register.
-* Made `prettyBytecode` debug function `inline`.
+Using a stack based virtual machine. 
 
 # building
 ```
