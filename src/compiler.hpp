@@ -1,236 +1,146 @@
 #pragma once
 
-#include <cstdint>
-#include <sys/types.h>
-#include <unordered_map>
 #include <vector>
-#include <string>
+#include <unordered_map>
 #include <stdexcept>
-
-#include "common.hpp"
+#include <iostream>
 #include "lexer.hpp"
-#include "opcodes.hpp"
+#include "common.hpp"
 
 class Compiler {
 private:
-    std::vector<Token>   tokens;
-    size_t               current;
-    std::vector<uint8_t> bytecode;
+    std::vector<uint16_t> bytecode;
+    std::unordered_map<std::string, uint16_t> variables;
+    uint16_t next_reg = 1;
 
-    std::unordered_map<std::string, size_t> variables;
-    size_t                                  var_count = 0;
-
-    Token peek() const {
-        return tokens[current];
-    }
-
-    Token previous() const {
-        return tokens[current - 1];
-    }
-
-    Token advance() {
-        if (!is_at_end()) current++;
-        return previous();
-    }
-
-    bool is_at_end() const {
-        return peek().type == TokenType::EOS;
-    }
-
-    bool check(const TokenType& type) const {
-        if (is_at_end()) return false;
-        return peek().type == type;
-    }
-
-    bool match(const TokenType& type) {
-        if (check(type)) {
-            advance();
-            return true;
-        }
-
-        return false;
-    }
-
-    bool is_keyword(const std::string& w) {
-        return w == "int" || w == "bool" || w == "true" || w == "false";
-    }
-
-    void emitByte(uint8_t byte) {
+    void emitByte(uint16_t byte) {
         bytecode.push_back(byte);
+        //std::cout << "Emitted byte: 0x" << std::hex << byte << std::dec << std::endl;
     }
 
-    void emitBytes(uint8_t byte1, uint8_t byte2) {
+    void emitBytes(uint16_t byte1, uint16_t byte2) {
         emitByte(byte1);
         emitByte(byte2);
     }
 
-    void emitConstant(int value) {
-        if (value <= 255) {
-            emitByte(static_cast<uint8_t>(OpCode::PUSH));
-            emitByte(static_cast<uint8_t>(value));
-        } else {
-            emitByte(static_cast<uint8_t>(OpCode::PUSHK));
-            emitByte(static_cast<uint8_t>((value >> 24) & 0xFF));
-            emitByte(static_cast<uint8_t>((value >> 16) & 0xFF));
-            emitByte(static_cast<uint8_t>((value >> 8) & 0xFF));
-            emitByte(static_cast<uint8_t>(value & 0xFF));
-        }
+    void emitBytes(uint16_t byte1, uint16_t byte2, uint16_t byte3) {
+        emitByte(byte1);
+        emitByte(byte2);
+        emitByte(byte3);
     }
 
-    void call() {
-        std::string func_name = previous().value;
+    void emitBytes(uint16_t byte1, uint16_t byte2, uint16_t byte3, uint16_t byte4) {
+        emitByte(byte1);
+        emitByte(byte2);
+        emitByte(byte3);
+        emitByte(byte4);
+    }
 
-        if (!match(TokenType::LPAREN)) {
-            throw std::runtime_error("Expected '(' after function name.");
+    void emitLDR(uint16_t fromReg, uint16_t toReg) {
+        emitByte(LDR);
+        emitByte(toReg);
+        emitByte(0x100 | fromReg);  // indicate it's a register, not a value
+    }
+
+    uint16_t allocRegister() {
+        if (next_reg >= 256) {
+            throw std::runtime_error("Register overflow.");
+        }
+        //std::cout << "Allocated register: " << next_reg << std::endl;
+        return next_reg++;
+    }
+
+    uint16_t expression(const std::vector<Token>& tokens, size_t& index) {
+        if (index >= tokens.size()) {
+            throw std::runtime_error("Unexpected end of input.");
         }
 
-        if (func_name == "print") {
-            if (!match(TokenType::RPAREN)) {
-                expression();
+        const Token& token = tokens[index];
+        uint16_t result_reg;
 
-                if (!match(TokenType::RPAREN)) {
-                    throw std::runtime_error("Expected ')' to finish expression in function call.");
-                }
+        switch (token.type) {
+        case NUMBER: {
+            uint16_t value = std::stoi(token.lexeme);
+            result_reg = allocRegister();
+            emitBytes(LDR, result_reg, value);
+            //std::cout << "Compiled number: " << value << " to register " << result_reg << std::endl;
+            index++;
+            break;
+        }
+        case IDENTIFIER: {
+            auto it = variables.find(token.lexeme);
+            if (it == variables.end()) {
+                throw std::runtime_error("Undefined variable '" + token.lexeme + "'");
+            }
+            result_reg = it->second;
+            index++;
+            break;
+        }
+        case LPAREN: {
+            index++; // skip (
+            result_reg = expression(tokens, index);
+            if (index >= tokens.size() || tokens[index].type != RPAREN) {
+                throw std::runtime_error("Expected ')'");
+            }
+            index++; // skip )
+            break;
+        }
+        default:
+            throw std::runtime_error("Unexpected token: " + token.lexeme);
+        }
+
+        while (index < tokens.size() && tokens[index].type == OPERATOR) {
+            const std::string& op = tokens[index].lexeme;
+            index++;
+
+            uint16_t right_reg = expression(tokens, index);
+            uint16_t new_result_reg = allocRegister();
+
+            //std::cout << "Compiling operation: " << op << std::endl;
+
+            if (op == "+") {
+                emitBytes(ADD, result_reg, right_reg, new_result_reg);
+            }
+            else if (op == "-") {
+                emitBytes(SUB, result_reg, right_reg, new_result_reg);
+            }
+            else if (op == "*") {
+                emitBytes(MUL, result_reg, right_reg, new_result_reg);
+            }
+            else if (op == "/") {
+                emitBytes(DIV, result_reg, right_reg, new_result_reg);
+            }
+            else if (op == "%") {
+                emitBytes(MOD, result_reg, right_reg, new_result_reg);
+            }
+            else {
+                throw std::runtime_error("Unsupported operator: " + op);
             }
 
-            emitByte(static_cast<uint8_t>(OpCode::PRINT));
-        } else {
-            throw std::runtime_error("Unknown function '" + func_name + "'");
-        }
-    }
-
-    void number() {
-        int value = std::stoi(previous().value);
-        emitConstant(value);
-    }
-
-    void boolean() {
-        print("compiling boolean");
-        uint8_t value = 0x80 | (previous().type == TokenType::TRUE ? 0x01 : 0x00);
-        emitByte(static_cast<uint8_t>(OpCode::PUSH));
-        emitByte(value);
-    }
-
-    void string() {
-        std::string value = previous().value;
-        emitByte(static_cast<uint8_t>(OpCode::PUSHK));
-        emitByte(0xFF);
-        for (char c : value) {
-            emitByte(static_cast<uint8_t>(c));
-        }
-        emitByte(0);
-    }
-
-    void unary() {
-        Token op = previous();
-        expression();
-
-        if (op.value == "!") emitByte(static_cast<uint8_t>(OpCode::NOT));
-        else if (op.value == "++") emitByte(static_cast<uint8_t>(OpCode::INC));
-        else if (op.value == "--") emitByte(static_cast<uint8_t>(OpCode::DEC));
-        else if (op.value == "-") emitByte(static_cast<uint8_t>(OpCode::NEG));
-    }
-
-    void variable() {
-        std::string name = previous().value;
-        if (variables.find(name) == variables.end()) {
-            throw std::runtime_error("Undefined variable '" + name + "'");
+            result_reg = new_result_reg;
         }
 
-        emitByte(static_cast<uint8_t>(OpCode::LOAD));
-        emitByte(static_cast<uint8_t>(variables[name]));
-    }
-
-    void declaration() {
-        if (!match(TokenType::TYPE)) {
-            throw std::runtime_error("Expected type declaration.");
-        }
-
-        std::string type = previous().value;
-
-        if (!match(TokenType::IDENTIFIER)) {
-            throw std::runtime_error("Expected variable name, got type " + std::to_string(static_cast<int>(peek().type)));
-        }
-
-        std::string name = previous().value;
-
-        if (variables.find(name) != variables.end()) {
-            throw std::runtime_error("Variable '" + name + "' already declared.");
-        }
-
-        variables[name] = var_count++;
-
-        if (match(TokenType::EQUALS)) {
-            expression();
-        } else {
-            emitByte(static_cast<uint8_t>(OpCode::PUSH));
-            emitByte(0);
-        }
-
-        emitByte(static_cast<uint8_t>(OpCode::STORE));
-        emitByte(static_cast<uint8_t>(variables[name]));
-
-        if (!match(TokenType::SEMI)) {
-            throw std::runtime_error("Expected ';' after variable declaration.");
-        }
-    }
-
-    void binary() {
-        std::string op = previous().value;
-        expression(); // compile right-oper
-
-        if (op == "+") emitByte(static_cast<uint8_t>(OpCode::ADD));
-        else if (op == "-") emitByte(static_cast<uint8_t>(OpCode::SUB));
-        else if (op == "*") emitByte(static_cast<uint8_t>(OpCode::MUL));
-        else if (op == "/") emitByte(static_cast<uint8_t>(OpCode::DIV));
-        else if (op == "%") emitByte(static_cast<uint8_t>(OpCode::MOD));
-    }
-
-    void grouping() {
-        expression();
-        if (!match(TokenType::RPAREN))
-            throw std::runtime_error("Expected ')' after grouped expression.");
-    }
-
-    void expression() {
-        if (match(TokenType::NUMBER)) number();
-        else if (match(TokenType::STRING)) string();
-        else if (match(TokenType::TRUE) || match(TokenType::FALSE)) boolean();
-        else if (match(TokenType::IDENTIFIER)) {
-            std::string name = previous().value;
-            if (peek().type == TokenType::LPAREN) {
-                call();
-            } else {
-                variable();
-            }
-        }
-        else if (match(TokenType::PREFIX)) unary();
-        else if (match(TokenType::LPAREN)) grouping();
-        else throw std::runtime_error("Expected expression.");
-
-        while (match(TokenType::OPERATOR) || match(TokenType::POSTFIX))
-            binary();
+        return result_reg;
     }
 
 public:
-    Compiler(const std::vector<Token>& tokens) : tokens(tokens), current(0) {}
-    
-    std::vector<uint8_t> compile() {
+    std::vector<uint16_t> compile(const std::vector<Token>& tokens) {
         bytecode.clear();
+        variables.clear();
+        next_reg = 1;
 
-        while (!is_at_end()) {
-            if (match(TokenType::TYPE)) {
-                current--;
-                declaration();
-            } else {
-                expression();
-                if (match(TokenType::SEMI)) advance();
-            }
+        //std::cout << "Starting compilation" << std::endl;
+        size_t index = 0;
+        uint16_t finalResultReg = expression(tokens, index);
 
-        }
+        emitLDR(finalResultReg, 0);
 
-        emitByte(static_cast<uint8_t>(OpCode::HALT));
-
+        //std::cout << "Compilation finished. Bytecode size: " << bytecode.size() << std::endl;
         return bytecode;
+    }
+
+    void print_bytecode() const {
+        std::cout << "Bytecode:" << std::endl;
+        std::cout << prettyBytecode(bytecode);
     }
 };
