@@ -1,136 +1,202 @@
-#pragma once
-#include <string>
-#include <vector>
-#include <memory>
+#include "cvm.hpp"
 #include <cctype>
-#include <unordered_map>
+#include <cstddef>
+#include <vector>
+#include <string>
 
-#define OPERATOR    0x01
-#define NUMBER      0x02
-#define IDENTIFIER  0x03
-#define SEMI        0x04
-#define ASSIGN      0x05
-#define KEYWORD     0x06
-#define LPAREN      0x07
-#define RPAREN      0x08
-#define EOS         0x00
-
-struct Token {
-    uint16_t    type;
-    std::string lexeme;
-    Token(uint16_t t, const std::string& v) : type(t), lexeme(v) {}
+enum class TokenType {
+    IDENTIFIER,
+    OPERATOR,
+    STRING,
+    NUMBER,
+    LPAREN,
+    RPAREN,
+    LBRACE,
+    RBRACE,
+    LBRACKET,
+    RBRACKET,
+    COMMA,
+    PREFIX,
+    POSTFIX,
+    EQUALS,
+    FALSE,
+    SEMI,
+    TYPE,
+    TRUE,
+    EOS,
 };
+
+typedef struct Token {
+    TokenType type;
+    std::string value;
+    // size_t line;
+    // size_t col;
+} Token;
 
 class Lexer {
 private:
     std::string source;
     size_t position;
     char current;
-    std::unordered_map<std::string, uint16_t> keywords;
 
 public:
-    Lexer(const std::string& source) : source(source), position(0), current(source[position]) {
-        keywords = {
-            {"true", KEYWORD},
-            {"false", KEYWORD},
-        };
-    }
+    Lexer(const std::string& source) : source(source), position(0), current(source.empty() ? '\0' : source[0]) {}
 
-    std::vector<Token> tokenize() {
+    std::vector<Token> generate() {
         std::vector<Token> tokens;
+        
         while (not_end()) {
-            if (current == ' ' || current == '\n' || current == '\t') {
+            if (std::isspace(current)) {
                 advance();
+                continue;
             }
-            else if (contains(current, "+-*/%^")) {
-                tokens.emplace_back(Token{ OPERATOR, std::string(1, current) });
-                advance();
-            }
-            else if (current == '(') {
-                tokens.emplace_back(Token{ LPAREN, "(" });
-                advance();
-            }
-            else if (current == ')') {
-                tokens.emplace_back(Token{ RPAREN, ")" });
-                advance();
-            }
-            else if (current == '=') {
-                if (peek() == '=') {
-                    tokens.emplace_back(Token{ OPERATOR, "==" });
-                    advance();
-                    advance();
-                }
-                else {
-                    tokens.emplace_back(Token{ ASSIGN, "=" });
-                    advance();
-                }
-            }
-            else if (current == '!') {
-                if (peek() == '=') {
-                    tokens.emplace_back(Token{ OPERATOR, "!=" });
-                    advance();
-                    advance();
-                }
-                else {
-                    tokens.emplace_back(Token{ OPERATOR, "!" });
-                    advance();
-                }
-            }
-            else if (current == '>') {
-                if (peek() == '=') {
-                    tokens.emplace_back(Token{ OPERATOR, ">=" });
-                    advance();
-                    advance();
-                }
-                else {
-                    tokens.emplace_back(Token{ OPERATOR, ">" });
-                    advance();
-                }
-            }
-            else if (current == '<') {
-                if (peek() == '=') {
-                    tokens.emplace_back(Token{ OPERATOR, "<=" });
-                    advance();
-                    advance();
-                }
-                else {
-                    tokens.emplace_back(Token{ OPERATOR, "<" });
-                    advance();
-                }
-            }
-            else if (current == '&' && peek() == '&') {
-                tokens.emplace_back(Token{ OPERATOR, "&&" });
-                advance();
-                advance();
-            }
-            else if (current == '|' && peek() == '|') {
-                tokens.emplace_back(Token{ OPERATOR, "||" });
-                advance();
-                advance();
-            }
-            else if (current == ';') {
-                tokens.emplace_back(Token{ SEMI, ";" });
-                advance();
-            }
-            else if (std::isdigit(current)) {
-                tokens.emplace_back(number());
-            }
-            else if (std::isalpha(current) || current == '_') {
-                tokens.emplace_back(identifier());
-            }
+            
             else {
-                advance();
+                switch (current) {
+                    case '+':
+                        advance();
+                        if (current == '+') {
+                            tokens.emplace_back(nt(TokenType::PREFIX, "++"));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "+"));
+                        }
+                        break;
+
+                    case '-':
+                        advance();
+                        if (current == '-') {
+                            tokens.emplace_back(nt(TokenType::PREFIX, "--"));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "-"));
+                        }
+                        break;
+
+                    case '*':
+                    case '/':
+                    case '%':
+                        tokens.emplace_back(nt(TokenType::OPERATOR, std::string(1, current)));
+                        advance();
+                        break;
+
+                    case '(':
+                        tokens.emplace_back(nt(TokenType::LPAREN, "("));
+                        advance();
+                        break;
+
+                    case ')':
+                        tokens.emplace_back(nt(TokenType::RPAREN, ")"));
+                        advance();
+                        break;
+
+                    case ';':
+                        tokens.emplace_back(nt(TokenType::SEMI, ";"));
+                        advance();
+                        break;
+
+                    case '[':
+                        tokens.emplace_back(nt(TokenType::LBRACKET, "["));
+                        advance();
+                        break;
+
+                    case ']':
+                        tokens.emplace_back(nt(TokenType::RBRACKET, "]"));
+                        advance();
+                        break;
+
+                    case '{':
+                        tokens.emplace_back(nt(TokenType::LBRACE, "{"));
+                        advance();
+                        break;
+
+                    case ',':
+                        tokens.emplace_back(nt(TokenType::COMMA, ","));
+                        advance();
+                        break;
+
+                    case '}':
+                        tokens.emplace_back(nt(TokenType::RBRACE, "}"));
+                        advance();
+                        break;
+
+                    case '!':
+                        tokens.emplace_back(nt(TokenType::PREFIX, "!"));
+                        advance();
+                        break;
+
+                    case '=':
+                        tokens.emplace_back(nt(TokenType::EQUALS, "="));
+                        advance();
+                        break;
+
+                    case '"': {
+                        advance();
+                        std::string value;
+                        while (not_end() && current != '"') {
+                            if (current == '\\') {
+                                advance();
+                                switch (current) {
+                                    case 'n': value += '\n'; break;
+                                    case 't': value += '\t'; break;
+                                    case 'r': value += '\r'; break;
+                                    case '"': value += '"'; break;
+                                    case '\\': value += '\\'; break;
+                                    default: value += current;
+                                }
+                            } else {
+                                value += current;
+                            }
+                            advance();
+                        }
+
+                        if (current == '"') {
+                            advance();
+                            tokens.emplace_back(nt(TokenType::STRING, value));
+                        } else {
+                            throw Error("Unterminated string literal.");
+                        }
+                        
+                        break;
+                    }
+
+                    default:
+                        if (std::isdigit(current)) {
+                            std::string value;
+                            while (not_end() && std::isdigit(current)) {
+                                value.push_back(current);
+                                advance();
+                            }
+                            tokens.emplace_back(nt(TokenType::NUMBER, value));
+                        } else if (std::isalpha(current) || current == '_') {
+                            std::string value;
+                            while (not_end() && (std::isalpha(current) || current == '_')) {
+                                value.push_back(current);
+                                advance();
+                            }
+                            
+                            if (value == "true") {
+                                tokens.emplace_back(nt(TokenType::TRUE, value));
+                            } else if (value == "false") {
+                                tokens.emplace_back(nt(TokenType::FALSE, value));
+                            } else if (value == "int" || value == "bool" || value == "string") {
+                                tokens.emplace_back(nt(TokenType::TYPE, value));
+                            } else {
+                                tokens.emplace_back(nt(TokenType::IDENTIFIER, value));
+                            }
+                        }
+                        break;
+                }
             }
         }
-        tokens.emplace_back(Token{ EOS, "" });
+        
+        tokens.emplace_back(nt(TokenType::EOS, ""));
         return tokens;
     }
 
-    bool contains(char c, const char* candidate) {
-        for (const char* p = candidate; *p != '\0'; ++p) {
-            if (*p == c) return true;
-        }
-        return false;
+private:
+    Token nt(const TokenType& type, const std::string& value) const {
+        return Token{.type = type, .value = value};
     }
 
     bool not_end() {
@@ -139,49 +205,6 @@ public:
 
     void advance() {
         position++;
-        if (not_end()) {
-            current = source[position];
-        }
-        else {
-            current = '\0';
-        }
-    }
-
-    char peek() {
-        if (position + 1 < source.size()) {
-            return source[position + 1];
-        }
-        return '\0';
-    }
-
-    Token number() {
-        std::string value;
-        while (not_end() && std::isdigit(current)) {
-            value.push_back(current);
-            advance();
-        }
-
-        if (current == '.' && std::isdigit(peek())) {
-            value.push_back(current);
-            advance();
-            while (not_end() && std::isdigit(current)) {
-                value.push_back(current);
-                advance();
-            }
-        }
-        return Token{ NUMBER, value };
-    }
-
-    Token identifier() {
-        std::string value;
-        while (not_end() && (std::isalpha(current) || current == '_')) {
-            value.push_back(current);
-            advance();
-        }
-        auto it = keywords.find(value);
-        if (it != keywords.end()) {
-            return Token{ it->second, value };
-        }
-        return Token{ IDENTIFIER, value };
+        current = position < source.size() ? source[position] : '\0';
     }
 };

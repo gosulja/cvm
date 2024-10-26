@@ -8,10 +8,10 @@ TARGET = $(BUILD_DIR)/cvm
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-all: $(BUILD_DIR) $(TARGET)
-
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)	&& clear
+
+all: $(BUILD_DIR) $(TARGET)
 
 clean:
 	rm -rf $(BUILD_DIR)

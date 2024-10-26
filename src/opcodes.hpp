@@ -22,6 +22,14 @@ enum class OpCode : uint8_t {
     CONCAT = 0x0E,
     PRINT  = 0x0F,
 
+    MKARR  = 0x20,
+    MKVEC  = 0x21,
+    APUSH  = 0x22,
+    GETIDX = 0x23,
+    SETIDX = 0x24,
+    ASIZE  = 0x25,
+    VBACK  = 0x26,
+
     HALT = 0x00,
 };
 
