@@ -1,0 +1,5 @@
+int age = 20;
+print("Age: " + age);
+
+string name = "blinx";
+print("Name: " + name);
