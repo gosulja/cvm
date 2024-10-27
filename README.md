@@ -28,3 +28,13 @@ then:
 ```
 ./cvm [-d -h -o] [...file.cat]
 ```
+
+# example
+```
+int age = 20;
+print("Age: " + age);
+
+string name = "blinx";
+print("Name: " + name);
+```
+![image](https://github.com/user-attachments/assets/7b81853c-2617-4a4a-b4d9-b12a0f0d2e6a)
