@@ -13,6 +13,7 @@ enum class Type {
     STRING,
     ARRAY,
     VECTOR,
+    VOID,
 };
 
 class Value;

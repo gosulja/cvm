@@ -30,6 +30,20 @@ enum class OpCode : uint8_t {
     ASIZE  = 0x25,
     VBACK  = 0x26,
 
+    JMP    = 0x27,  // unconditional jump
+    JMPF   = 0x28,  // jump if false
+
+    GT     = 0x29, // greater than
+    LT     = 0x30, // less than
+    GTE    = 0x31, // greater than or equal
+    LTE    = 0x32, // less than or equal
+    EQ     = 0x33, // equal '=='
+    NEQ    = 0x34, // not equal '!='
+
+    RET    = 0x35,
+    CALL   = 0x36,
+    ENTER  = 0x37, // enter functions frame
+
     HALT = 0x00,
 };
 
@@ -49,6 +63,8 @@ inline std::string op_as_string(const OpCode& opcode) {
         case OpCode::DEC: return "DEC";
         case OpCode::PUSHK: return "PUSHK";
         case OpCode::NEG: return "NEG";
+        case OpCode::JMP: return "JMP";
+        case OpCode::JMPF: return "JMPF";
         default: return "UNKNOWN";
     }
 }

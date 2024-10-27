@@ -1,0 +1,7 @@
+// currently, arguments implementation is broken, so no arguments work fine.
+
+fn main() void {
+    print("hello, world!");
+}
+
+main();

@@ -20,7 +20,7 @@ class VMStack;
 
 class Error : public std::runtime_error {
 public:
-    explicit Error(const std::string& msg) : std::runtime_error("[CVM::Error] " + msg) {}
+    explicit Error(const std::string& msg) : std::runtime_error(msg) {}
 };
 
 class OperandStack {
@@ -87,6 +87,11 @@ public:
         return bytecode[ip++];
     }
 
+    void enterFunction(size_t n_ip) {
+        ip = n_ip;
+        op_stack.clear();
+    }
+
     void push(const Value& value) {
         op_stack.push(value);
     }
@@ -132,9 +137,23 @@ class CVM {
 private:
     std::vector<uint8_t>    bytecode;
     std::unique_ptr<Frame>  cur_frame;
+    std::vector<std::unique_ptr<Frame>> call_stack;
     
     // debug values
     bool                    debug = false;
+
+    void call_function(size_t bytecode_offset) {
+        auto new_frame = std::make_unique<Frame>(bytecode);
+        new_frame->setIP(bytecode_offset);
+
+        uint8_t param_count = new_frame->readByte();
+        for (int i = param_count - 1; i >= 0; i--) {
+            Value arg = call_stack.back()->pop();
+            new_frame->setLocal(i, arg);
+        }
+
+        call_stack.push_back(std::move(new_frame));
+    }
 
     void unary(const OpCode& op) {
         Value a = cur_frame->pop();
@@ -187,6 +206,49 @@ private:
 
         cur_frame->push(result);
     }
+
+    void comparison(const OpCode& op) {
+        Value b = cur_frame->pop();
+        Value a = cur_frame->pop();
+
+        if (a.type == Type::STRING || b.type == Type::STRING) {
+            if (op != OpCode::EQ && op != OpCode::NEQ) {
+                throw Error("Only equality comparisons are supported for strings.");
+            }
+
+            std::string str_a, str_b;
+            
+            if (a.type == Type::STRING) str_a = *a.svalue;
+            else if (a.type == Type::INT) str_a = std::to_string(a.ivalue);
+            else if (a.type == Type::BOOL) str_a = (a.bvalue ? "true" : "false");
+            
+            if (b.type == Type::STRING) str_b = *b.svalue;
+            else if (b.type == Type::INT) str_b = std::to_string(b.ivalue);
+            else if (b.type == Type::BOOL) str_b = (b.bvalue ? "true" : "false");
+
+            bool result = (op == OpCode::EQ) ? (str_a == str_b) : (str_a != str_b);
+            cur_frame->push(Value(result));
+            return;
+        }
+
+        if (a.type != Type::INT || b.type != Type::INT) {
+            throw Error("Comparison operation cannot be performed on non-integer types.");
+        }
+
+        bool result;
+        switch (op) {
+            case OpCode::EQ:  result = (a.ivalue == b.ivalue); break;
+            case OpCode::NEQ: result = (a.ivalue != b.ivalue); break;
+            case OpCode::GT:  result = (a.ivalue > b.ivalue);  break;
+            case OpCode::GTE: result = (a.ivalue >= b.ivalue); break;
+            case OpCode::LT:  result = (a.ivalue < b.ivalue);  break;
+            case OpCode::LTE: result = (a.ivalue <= b.ivalue); break;
+            default: throw Error("Unknown comparison operator.");
+        }
+
+        cur_frame->push(Value(result));
+    }
+
 
     void binary(const OpCode& op) {
         Value b = cur_frame->pop();
@@ -265,13 +327,18 @@ private:
             case Type::VECTOR:
                 std::cout << &value.vvalue;
                 break;
-        }
+            case Type::VOID:
+              break;
+            }
         std::cout << std::endl;
     }
 
 public:
     CVM(const std::vector<uint8_t>& bcode, bool debug = false)
-        : bytecode(bcode), debug(debug) {}
+        : bytecode(bcode), debug(debug) {
+        
+        call_stack.push_back(std::make_unique<Frame>(bytecode));
+    }
 
     void execute() {
         cur_frame = std::make_unique<Frame>(bytecode);
@@ -298,6 +365,7 @@ public:
                                 str += static_cast<char>(c);
                             }
                             cur_frame->push(Value(str));
+                            continue;
                         } else {
                             // int consts
                             int value = (type_byte << 24) |
@@ -305,6 +373,7 @@ public:
                                       (cur_frame->readByte() << 8) |
                                       cur_frame->readByte();
                             cur_frame->push(Value(value));
+                            continue;
                         }
                         break;
                     }
@@ -348,12 +417,44 @@ public:
                     case OpCode::MOD:
                         binary(opc);
                         break;
+                    case OpCode::GT:
+                    case OpCode::LT:
+                    case OpCode::GTE:
+                    case OpCode::LTE:
+                    case OpCode::EQ:
+                    case OpCode::NEQ:
+                        comparison(opc);
+                        break;
                     case OpCode::NOT:
                     case OpCode::INC:
                     case OpCode::DEC:
                     case OpCode::NEG:
                         unary(opc);
                         break;
+                    case OpCode::JMP: {
+                        uint16_t offset = (cur_frame->readByte() << 8) | cur_frame->readByte();
+                        cur_frame->setIP(cur_frame->getIP() + offset - 2);
+                        break;
+                    }
+                    case OpCode::JMPF: {
+                        uint16_t offset = (cur_frame->readByte() << 8) | cur_frame->readByte();
+                        Value condition = cur_frame->pop();
+
+                        bool jump = false;
+                        if (condition.type == Type::BOOL) {
+                            jump = !condition.bvalue;
+                        } else if (condition.type == Type::INT) {
+                            jump = condition.ivalue == 0;
+                        } else {
+                            throw Error("Invalid condition type for jump.");
+                        }
+
+                        if (jump) {
+                            cur_frame->setIP(cur_frame->getIP() + offset - 2);
+                        }
+
+                        break;
+                    }
                     case OpCode::MKARR: {
                         uint8_t type_byte = cur_frame->readByte();
                         Type e_type = static_cast<Type>(type_byte);
@@ -425,12 +526,14 @@ public:
                         break;
                     }
                     case OpCode::ASIZE: {
-                        Value arr = cur_frame->pop();
+                        Value v = cur_frame->pop();
         
-                        if (arr.type == Type::ARRAY) {
-                            cur_frame->push(Value(static_cast<int>(arr.avalue->size())));
-                        } else if (arr.type == Type::VECTOR) {
-                            cur_frame->push(Value(static_cast<int>(arr.vvalue->size())));
+                        if (v.type == Type::ARRAY) {
+                            cur_frame->push(Value(static_cast<int>(v.avalue->size())));
+                        } else if (v.type == Type::VECTOR) {
+                            cur_frame->push(Value(static_cast<int>(v.vvalue->size())));
+                        } else if (v.type == Type::STRING) {
+                            cur_frame->push(Value(static_cast<int>(v.svalue->size())));
                         } else {
                             throw Error("Cannot get size of non-array type.");
                         }
@@ -447,6 +550,32 @@ public:
                         
                         // vec.vvalue->push_back(value);
                         // cur_frame->push(vec);
+                        break;
+                    }
+                    case OpCode::ENTER: {
+                        uint8_t locals_count = cur_frame->readByte();
+                        for (uint8_t i = 0; i < locals_count; i++) {
+                            cur_frame->setLocal(i, Value(0));
+                        }
+                        break;
+                    }
+                    case OpCode::CALL: {
+                        // read bytecode offset in 32 bit
+                        size_t offset = (cur_frame->readByte() << 24) |
+                                      (cur_frame->readByte() << 16) |
+                                      (cur_frame->readByte() << 8) |
+                                      cur_frame->readByte();
+                        
+                        call_function(offset);
+                        break;
+                    }
+                    case OpCode::RET: {
+                        Value return_value = cur_frame->pop();
+                        call_stack.pop_back();
+                        
+                        if (!call_stack.empty()) {
+                            call_stack.back()->push(return_value);
+                        }
                         break;
                     }
                     case OpCode::PRINT: {

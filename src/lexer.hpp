@@ -1,6 +1,7 @@
 #include "cvm.hpp"
 #include <cctype>
 #include <cstddef>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -15,6 +16,10 @@ enum class TokenType {
     RBRACE,
     LBRACKET,
     RBRACKET,
+    FUNCTION,
+    RETURN,
+    IF,
+    ELSE,
     COMMA,
     PREFIX,
     POSTFIX,
@@ -29,18 +34,36 @@ enum class TokenType {
 typedef struct Token {
     TokenType type;
     std::string value;
-    // size_t line;
-    // size_t col;
+    size_t line, col;
+
+    Token(const TokenType& type, const std::string& value, size_t line, size_t col)
+        : type(type), value(value), line(line), col(col) {}
 } Token;
 
 class Lexer {
 private:
     std::string source;
-    size_t position;
+    size_t position, l = 0, c;  // l = line, c = column
     char current;
 
+    std::unordered_map<std::string, TokenType> keywords;
+
 public:
-    Lexer(const std::string& source) : source(source), position(0), current(source.empty() ? '\0' : source[0]) {}
+    Lexer(const std::string& source) : source(source), position(0), current(source.empty() ? '\0' : source[0]) {
+        keywords = {
+            {"true", TokenType::TRUE},
+            {"false", TokenType::FALSE},
+            {"null", TokenType::TYPE},
+            {"void", TokenType::TYPE},
+            {"int", TokenType::TYPE},
+            {"bool", TokenType::TYPE},
+            {"string", TokenType::TYPE},
+            {"if", TokenType::IF},
+            {"else", TokenType::ELSE},
+            {"fn", TokenType::FUNCTION},
+            {"return", TokenType::RETURN},
+        };
+    }
 
     std::vector<Token> generate() {
         std::vector<Token> tokens;
@@ -49,9 +72,7 @@ public:
             if (std::isspace(current)) {
                 advance();
                 continue;
-            }
-            
-            else {
+            } else {
                 switch (current) {
                     case '+':
                         advance();
@@ -73,8 +94,25 @@ public:
                         }
                         break;
 
+                    case '/': {
+                        advance();
+                        if (current == '/') {
+                            while (not_end() && current != '\n') {
+                                advance();
+                            }
+
+                            if (current == '\n') { 
+                                l++; 
+                                c = 1; 
+                                advance(); 
+                            }
+                        } else {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "/"));
+                        }
+                        break;
+                    }
+
                     case '*':
-                    case '/':
                     case '%':
                         tokens.emplace_back(nt(TokenType::OPERATOR, std::string(1, current)));
                         advance();
@@ -120,14 +158,44 @@ public:
                         advance();
                         break;
 
-                    case '!':
-                        tokens.emplace_back(nt(TokenType::PREFIX, "!"));
+                    case '<':
                         advance();
+                        if (current == '=') {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "<="));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "<"));
+                        }
+                        break;
+
+                    case '>':
+                        advance();
+                        if (current == '=') {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, ">="));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, ">"));
+                        }
+                        break;
+
+                    case '!':
+                        advance();
+                        if (current == '=') {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "!="));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::PREFIX, "!"));
+                        }
                         break;
 
                     case '=':
-                        tokens.emplace_back(nt(TokenType::EQUALS, "="));
                         advance();
+                        if (current == '=') {
+                            tokens.emplace_back(nt(TokenType::OPERATOR, "=="));
+                            advance();
+                        } else {
+                            tokens.emplace_back(nt(TokenType::EQUALS, "="));
+                        }
                         break;
 
                     case '"': {
@@ -175,16 +243,16 @@ public:
                                 advance();
                             }
                             
-                            if (value == "true") {
-                                tokens.emplace_back(nt(TokenType::TRUE, value));
-                            } else if (value == "false") {
-                                tokens.emplace_back(nt(TokenType::FALSE, value));
-                            } else if (value == "int" || value == "bool" || value == "string") {
-                                tokens.emplace_back(nt(TokenType::TYPE, value));
+                            auto keyword = keywords.find(value);
+                            if (keyword != keywords.end()) {
+                                tokens.emplace_back(nt(keyword->second, value));
                             } else {
                                 tokens.emplace_back(nt(TokenType::IDENTIFIER, value));
                             }
+                        } else {
+                            throw Error("Unknown character at '" + std::string(1, current) + "' (ln " + std::to_string(static_cast<int>(l)) + ", col " + std::to_string(static_cast<int>(c)) + ")");
                         }
+
                         break;
                 }
             }
@@ -196,7 +264,7 @@ public:
 
 private:
     Token nt(const TokenType& type, const std::string& value) const {
-        return Token{.type = type, .value = value};
+        return Token(type, value, l, c);
     }
 
     bool not_end() {
@@ -204,6 +272,12 @@ private:
     }
 
     void advance() {
+        if (current == '\n') {
+            l++; 
+            c = 1;
+        } else {
+            c++;
+        }
         position++;
         current = position < source.size() ? source[position] : '\0';
     }

@@ -1,0 +1,5 @@
+int[] nums = {1, 2, 3, 4, 5, 6, 7, 8};
+string[] cities = {"London", "Paris", "Bucharest", "Madrid"};
+
+print("Size of nums: " + size(nums));
+print("Size of cities: " + size(cities));

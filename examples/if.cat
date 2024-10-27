@@ -1,0 +1,8 @@
+string name = "blinx";
+int age = 20;
+
+if age >= 18 {
+    print("hi " + name + " you are over 18");
+} else {
+    print("sorry " + name + " you are under 18");
+}
